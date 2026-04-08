@@ -6,7 +6,9 @@ import {
   signInWithEmailAndPassword, 
   createUserWithEmailAndPassword, 
   setPersistence, 
-  browserLocalPersistence 
+  browserLocalPersistence,
+  sendEmailVerification,
+  signOut // <-- AÑADIMOS SIGNOUT
 } from "firebase/auth";
 import { auth } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
@@ -30,19 +32,49 @@ export default function LoginPage() {
 
     try {
       await setPersistence(auth, browserLocalPersistence);
+      
       if (isLogin) {
-        await signInWithEmailAndPassword(auth, email, password);
+        // --- 1. LÓGICA DE INICIO DE SESIÓN SEGURO ---
+        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        
+        // El portero comprueba si el email está verificado
+        if (!userCredential.user.emailVerified) {
+          await signOut(auth); // Lo echamos inmediatamente
+          toast({ 
+            variant: "destructive", 
+            title: "Acceso denegado", 
+            description: "Debes verificar tu email antes de poder entrar. Revisa tu bandeja de entrada." 
+          });
+          setIsLoading(false);
+          return; // Cortamos la ejecución para que no vaya al dashboard
+        }
+
         toast({ title: "Bienvenido de nuevo", description: "Acceso concedido." });
+        router.push("/dashboard");
+
       } else {
-        await createUserWithEmailAndPassword(auth, email, password);
-        toast({ title: "Cuenta creada", description: "Ya puedes empezar a registrar." });
+        // --- 2. LÓGICA DE REGISTRO SEGURO ---
+        const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+        
+        await sendEmailVerification(userCredential.user);
+        
+        // Lo desconectamos a la fuerza para que no se cuele sin verificar
+        await signOut(auth); 
+        
+        toast({ 
+          title: "¡Cuenta creada!", 
+          description: "Por favor, revisa tu bandeja de entrada para verificar tu email antes de entrar." 
+        });
+        
+        // Lo cambiamos a la vista de Login en lugar de mandarlo al Dashboard
+        setIsLogin(true);
+        setPassword(""); // Limpiamos la contraseña por seguridad
       }
-      router.push("/dashboard");
     } catch (error: any) {
       toast({ 
         variant: "destructive", 
-        title: "Error de autenticación", 
-        description: error.message || "Algo salió mal." 
+        title: "Error", 
+        description: error.message || "Algo salió mal. Comprueba tus datos." 
       });
     } finally {
       setIsLoading(false);
@@ -102,7 +134,11 @@ export default function LoginPage() {
           </CardContent>
           <CardFooter className="flex justify-center border-t border-border/50 pt-6">
             <button 
-              onClick={() => setIsLogin(!isLogin)}
+              type="button"
+              onClick={() => {
+                setIsLogin(!isLogin);
+                setPassword("");
+              }}
               className="text-sm text-accent hover:underline transition-all"
             >
               {isLogin ? "¿No tienes cuenta? Regístrate" : "¿Ya tienes cuenta? Inicia sesión"}

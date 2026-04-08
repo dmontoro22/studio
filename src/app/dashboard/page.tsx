@@ -2,37 +2,71 @@
 
 import { useAuth } from "@/context/AuthContext";
 import { Navigation } from "@/components/Navigation";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Dumbbell, Plus, History, Sparkles, TrendingUp } from "lucide-react";
+import { Dumbbell, Plus, History, Sparkles, TrendingUp, Loader2 } from "lucide-react"; // <-- Añadí Loader2
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, orderBy, limit } from "firebase/firestore";
+import { db, auth } from "@/lib/firebase"; 
+import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
+import { useRouter } from "next/navigation"; 
+import { signOut } from "firebase/auth"; 
+import { useToast } from "@/hooks/use-toast"; 
 
 export default function DashboardPage() {
   const { user } = useAuth();
   const [stats, setStats] = useState({ totalLogs: 0, lastExercise: "N/A" });
+  const router = useRouter();
+  const { toast } = useToast();
 
   useEffect(() => {
     if (!user) return;
 
-    const fetchStats = async () => {
-      const q = query(
-        collection(db, "workouts"),
-        where("userId", "==", user.uid),
-        orderBy("createdAt", "desc")
-      );
-      const snapshot = await getDocs(q);
+    // El portero sigue echando a la gente y mandándolos al login
+    if (!user.emailVerified) {
+      signOut(auth).then(() => {
+        toast({
+          variant: "destructive",
+          title: "Acceso denegado",
+          description: "Debes verificar tu correo electrónico para acceder."
+        });
+        router.push("/login"); 
+      });
+      return; 
+    }
+
+    const q = query(
+      collection(db, "workouts"),
+      where("userId", "==", user.uid),
+      orderBy("createdAt", "desc")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
       if (!snapshot.empty) {
         setStats({
-          totalLogs: snapshot.size,
-          lastExercise: snapshot.docs[0].data().exerciseName
+          totalLogs: snapshot.size, 
+          lastExercise: snapshot.docs[0].data().exerciseName 
         });
+      } else {
+        setStats({ totalLogs: 0, lastExercise: "N/A" });
       }
-    };
-    fetchStats();
-  }, [user]);
+    });
+
+    return () => unsubscribe();
+  }, [user, router, toast]);
+
+  // --- EL CANDADO DEFINITIVO ANTES DE DIBUJAR LA PANTALLA ---
+  // Si no hay usuario, o si existe pero NO está verificado, NO dibujamos el Dashboard.
+  // Mostramos una pantalla de carga mientras el useEffect de arriba lo expulsa.
+  if (!user || !user.emailVerified) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary mb-4" />
+        <p className="text-muted-foreground animate-pulse">Verificando seguridad...</p>
+      </div>
+    );
+  }
+  // -----------------------------------------------------------
 
   return (
     <div className="pb-24 pt-4 md:pt-20 min-h-screen bg-background px-4">

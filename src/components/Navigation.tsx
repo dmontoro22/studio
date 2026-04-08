@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation"; // <-- Añadimos useRouter
 import { Dumbbell, History, Sparkles, LogOut, LayoutDashboard } from "lucide-react";
 import { auth } from "@/lib/firebase";
 import { signOut } from "firebase/auth";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 
 export function Navigation() {
   const pathname = usePathname();
+  const router = useRouter(); // <-- Lo activamos aquí
 
   const navItems = [
     { name: "Panel", href: "/dashboard", icon: LayoutDashboard },
@@ -17,6 +18,16 @@ export function Navigation() {
     { name: "Historial", href: "/history", icon: History },
     { name: "IA Entrenador", href: "/suggestions", icon: Sparkles },
   ];
+
+  // --- NUEVA FUNCIÓN PARA CERRAR SESIÓN ---
+  const handleLogout = async () => {
+    try {
+      await signOut(auth); // Le dice a Firebase que cierre la sesión
+      router.push("/login"); // Te expulsa a la pantalla de login
+    } catch (error) {
+      console.error("Error al cerrar sesión:", error);
+    }
+  };
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 bg-card/80 backdrop-blur-lg border-t border-border md:top-0 md:bottom-auto md:border-b md:border-t-0">
@@ -45,8 +56,8 @@ export function Navigation() {
         <Button
           variant="ghost"
           size="icon"
-          onClick={() => signOut(auth)}
-          className="text-muted-foreground hover:text-destructive"
+          onClick={handleLogout} // <-- Ahora llama a nuestra nueva función
+          className="text-muted-foreground hover:text-destructive transition-colors"
           title="Cerrar sesión"
         >
           <LogOut className="h-5 w-5" />
